@@ -1,0 +1,7 @@
+{
+  "name": "co-coe",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/cripto.test.js tests/grafico.test.js tests/versao.test.js"
+  }
+}

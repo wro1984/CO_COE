@@ -1,0 +1,612 @@
+{
+ "hub": {
+  "matricula": "A0001",
+  "chave": "lago-vento-pedra",
+  "salt": "F3eeBy4E3jFjr5cQLgnXGw==",
+  "iter": 600000
+ },
+ "pacote": {
+  "app": "co-coe",
+  "v": 1,
+  "gerado_em": "2026-10-27T23:22:44+00:00",
+  "hub": {
+   "acessos": {
+    "33acd3dd6087e3956a3b91ae3a5e950363f199b64f90197dd0048ff39df743a8": {
+     "salt": "F3eeBy4E3jFjr5cQLgnXGw==",
+     "iv": "PQtppjBQkJPpuSRb",
+     "ct": "MVA5z1GPijaF8qfykkPtMFY88rNFwQjrLU+r/pPZAxeN2c5oVWa1u83j6qKaUhdd"
+    }
+   }
+  },
+  "dados": {
+   "iv": "xVr0kSe7VQ0yQpa9",
+   "ct": "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"
+  }
+ },
+ "esperado": {
+  "referencia": "2026-10-28",
+  "coletado_em": "2026-10-28T14:20:00",
+  "periodo": {
+   "de": "00:00",
+   "ate": "14:20"
+  },
+  "coe": {
+   "kpis": {
+    "eleg_hoje": 1111,
+    "eleg_hora": 55,
+    "online": 7,
+    "ultima_integracao": "2026-10-28T14:18:05"
+   },
+   "e15": {
+    "slots": [
+     "06:00",
+     "06:15",
+     "06:30",
+     "06:45",
+     "07:00",
+     "07:15",
+     "07:30",
+     "07:45",
+     "08:00",
+     "08:15",
+     "08:30",
+     "08:45",
+     "09:00",
+     "09:15",
+     "09:30",
+     "09:45",
+     "10:00",
+     "10:15",
+     "10:30",
+     "10:45",
+     "11:00",
+     "11:15",
+     "11:30",
+     "11:45",
+     "12:00",
+     "12:15",
+     "12:30",
+     "12:45",
+     "13:00",
+     "13:15",
+     "13:30",
+     "13:45",
+     "14:00",
+     "14:15"
+    ],
+    "series": {
+     "entrantes": [
+      202,
+      286,
+      144,
+      249,
+      231,
+      143,
+      264,
+      281,
+      267,
+      176,
+      194,
+      150,
+      294,
+      266,
+      144,
+      264,
+      247,
+      200,
+      212,
+      298,
+      267,
+      207,
+      275,
+      251,
+      158,
+      130,
+      262,
+      207,
+      247,
+      137,
+      241,
+      135,
+      285,
+      192
+     ],
+     "ouvidoria": [
+      3,
+      4,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      4,
+      4,
+      4,
+      2,
+      0,
+      1,
+      3,
+      3,
+      1,
+      0,
+      3,
+      2,
+      0,
+      2,
+      3,
+      0,
+      2,
+      4,
+      3,
+      2,
+      0,
+      2,
+      3,
+      2
+     ],
+     "repetidos": [
+      24,
+      34,
+      17,
+      29,
+      27,
+      17,
+      31,
+      33,
+      32,
+      21,
+      23,
+      18,
+      35,
+      31,
+      17,
+      31,
+      29,
+      24,
+      25,
+      35,
+      32,
+      24,
+      33,
+      30,
+      18,
+      15,
+      31,
+      24,
+      29,
+      16,
+      28,
+      16,
+      34,
+      23
+     ],
+     "sincronizados": [
+      79,
+      87,
+      48,
+      80,
+      78,
+      50,
+      82,
+      101,
+      95,
+      53,
+      66,
+      53,
+      93,
+      96,
+      51,
+      80,
+      90,
+      69,
+      69,
+      112,
+      88,
+      77,
+      109,
+      85,
+      62,
+      51,
+      93,
+      76,
+      88,
+      52,
+      89,
+      50,
+      101,
+      71
+     ],
+     "conectados": [
+      63,
+      69,
+      38,
+      64,
+      62,
+      40,
+      65,
+      80,
+      76,
+      42,
+      52,
+      42,
+      74,
+      76,
+      40,
+      64,
+      72,
+      55,
+      55,
+      89,
+      70,
+      61,
+      87,
+      68,
+      49,
+      40,
+      74,
+      60,
+      70,
+      41,
+      71,
+      40,
+      80,
+      56
+     ],
+     "elegiveis": [
+      47,
+      52,
+      28,
+      48,
+      46,
+      30,
+      49,
+      60,
+      57,
+      31,
+      39,
+      31,
+      55,
+      57,
+      30,
+      48,
+      54,
+      41,
+      41,
+      67,
+      52,
+      46,
+      65,
+      51,
+      37,
+      30,
+      55,
+      45,
+      52,
+      31,
+      53,
+      30,
+      60,
+      42
+     ]
+    }
+   },
+   "funil": {
+    "entrantes": 7506,
+    "sincronizados": 2624,
+    "conectados": 2085,
+    "elegiveis": 1560
+   },
+   "hist": {
+    "horas": [
+     "06h",
+     "07h",
+     "08h",
+     "09h",
+     "10h",
+     "11h",
+     "12h",
+     "13h",
+     "14h",
+     "15h",
+     "16h",
+     "17h",
+     "18h",
+     "19h",
+     "20h",
+     "21h"
+    ],
+    "hoje": [
+     323,
+     772,
+     663,
+     472,
+     925,
+     419,
+     805,
+     360,
+     523,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "d7": [
+     1086,
+     594,
+     432,
+     1056,
+     553,
+     707,
+     700,
+     1192,
+     808,
+     382,
+     470,
+     759,
+     711,
+     862,
+     584,
+     440
+    ],
+    "d14": [
+     1138,
+     740,
+     1184,
+     863,
+     585,
+     1023,
+     725,
+     667,
+     999,
+     689,
+     536,
+     454,
+     384,
+     480,
+     454,
+     537
+    ],
+    "d21": [
+     974,
+     538,
+     312,
+     796,
+     1151,
+     903,
+     486,
+     569,
+     588,
+     304,
+     449,
+     729,
+     847,
+     678,
+     924,
+     879
+    ]
+   },
+   "filas": [
+    [
+     "Em Tratativa",
+     40
+    ],
+    [
+     "Aguardando Tratativa",
+     300
+    ],
+    [
+     "Agendado",
+     90
+    ],
+    [
+     "Pendente Técnica",
+     30
+    ]
+   ],
+   "rede": [
+    [
+     "VIVO¹",
+     5000
+    ],
+    [
+     "VIVO²",
+     3000
+    ],
+    [
+     "ATC",
+     800
+    ],
+    [
+     "FIBRASIL",
+     500
+    ]
+   ],
+   "produto": [
+    [
+     "Banda",
+     6000
+    ],
+    [
+     "Linha",
+     2400
+    ],
+    [
+     "TV",
+     900
+    ]
+   ],
+   "crm": [
+    [
+     "NEXT",
+     5200
+    ],
+    [
+     "SOPHIA (SIEBEL)",
+     4100
+    ]
+   ]
+  },
+  "rt": {
+   "aguardando": 3000,
+   "navez": 1500,
+   "testes": {
+    "total": 100000,
+    "pct_up": 20.5,
+    "pct_erro": 5.5,
+    "pons": 15000
+   },
+   "ultimo_min": 1,
+   "funil": {
+    "entraram": 5000,
+    "voltaram": 700,
+    "encerrados": 600,
+    "pct": 14.0
+   },
+   "por_hora": {
+    "horas": [
+     "00h",
+     "01h",
+     "02h",
+     "03h",
+     "04h",
+     "05h",
+     "06h",
+     "07h",
+     "08h",
+     "09h",
+     "10h",
+     "11h",
+     "12h",
+     "13h",
+     "14h"
+    ],
+    "total": [
+     21,
+     70,
+     5,
+     6,
+     1,
+     45,
+     33,
+     23,
+     44,
+     63,
+     24,
+     61,
+     0,
+     32,
+     8
+    ],
+    "por_codigo": {
+     "174": [
+      9,
+      56,
+      0,
+      0,
+      0,
+      41,
+      30,
+      17,
+      34,
+      56,
+      15,
+      53,
+      0,
+      23,
+      0
+     ],
+     "151": [
+      5,
+      6,
+      1,
+      1,
+      1,
+      0,
+      3,
+      6,
+      6,
+      0,
+      5,
+      2,
+      0,
+      6,
+      3
+     ],
+     "10860": [
+      6,
+      4,
+      0,
+      0,
+      0,
+      3,
+      0,
+      0,
+      1,
+      5,
+      2,
+      0,
+      0,
+      3,
+      0
+     ],
+     "10829": [
+      1,
+      4,
+      4,
+      5,
+      0,
+      1,
+      0,
+      0,
+      3,
+      2,
+      2,
+      6,
+      0,
+      0,
+      5
+     ]
+    }
+   },
+   "codigos": [
+    [
+     "174 · Sincronismo recuperado",
+     334
+    ],
+    [
+     "151 · VOIP registrado",
+     45
+    ],
+    [
+     "10829 · Carga criada",
+     33
+    ],
+    [
+     "10860 · VLAN corrigida",
+     24
+    ]
+   ],
+   "motivos": [
+    [
+     "Segue DOWN",
+     3000
+    ],
+    [
+     "Saiu da fila no WFM",
+     900
+    ],
+    [
+     "Ainda não re-testado",
+     300
+    ]
+   ]
+  },
+  "erros": {}
+ }
+}
