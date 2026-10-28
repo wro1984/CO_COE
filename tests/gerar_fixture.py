@@ -56,17 +56,25 @@ class Inventadas(coe_app.Consultor):
             "rt_fila": [{"aguardando": 3000, "navez": 1500}],
             "rt_testes": [{"testes": 100000, "pct_up": 20.5, "pct_erro": 5.5, "pons": 15000, "ultimo_min": 1}],
             "rt_funil": [{"entraram": 5000, "voltaram": 700, "encerrados": 600}],
+            "d7": [{"hoje": 7506, "d7": 8000}],
+            "rt_d7": [{"testes": 90000, "encerrados": 400}],
             "rt_motivos": [{"motivo": "Segue DOWN", "n": 3000}, {"motivo": "Saiu da fila no WFM", "n": 900},
                            {"motivo": "Ainda não re-testado", "n": 300}],
         }[chave]
 
 
 salt = os.urandom(16)
-pessoa = {"matricula": MAT, "salt": salt, "chave": hub.chave_do_codigo(CHAVE, salt), "push_secret": None}
+segredo = os.urandom(32)                       # segredo de aviso (push) inventado, vai cifrado em `tk`
+pessoa = {"matricula": MAT, "salt": salt, "chave": hub.chave_do_codigo(CHAVE, salt), "push_secret": segredo}
 conteudo = json.loads(json.dumps(coe_app.montar_conteudo(Inventadas(), AGORA), default=str))
-pacote = coe_app.montar_pacote(conteudo, [pessoa])
+VAPID = "BEXEMPLO-chave-publica-inventada"
+pacote = coe_app.montar_pacote(conteudo, [pessoa], VAPID)
+# prova de uma inscrição inventada, calculada pelo MAPI: o app tem que chegar no mesmo valor
+insc = {"endpoint": "https://fcm.googleapis.com/fcm/send/exemplo", "p256dh": "B" + "x" * 86, "auth": "y" * 22}
 saida = {"hub": {"matricula": MAT, "chave": CHAVE, "salt": base64.b64encode(salt).decode(), "iter": hub.ITERACOES},
-         "pacote": pacote, "esperado": conteudo}
+         "pacote": pacote, "esperado": conteudo,
+         "push": {"chave": VAPID, "segredo": base64.b64encode(segredo).decode(), "inscricao": insc,
+                  "mac": coe_app.mac_inscricao(segredo, insc["endpoint"], insc["p256dh"], insc["auth"])}}
 destino = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "pacote.json")
 with open(destino, "w", encoding="utf-8") as f:
     json.dump(saida, f, ensure_ascii=False, indent=1)
