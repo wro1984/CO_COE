@@ -35,17 +35,25 @@ Leia este arquivo inteiro antes de mudar qualquer coisa.
    - `dados.json`: `{app:"co-coe", v:1, gerado_em, hub:{acessos:{id_hub:{salt, iv, ct}}}, dados:{iv, ct}}`;
    - `id_hub` = SHA-256 de `"hub:" + MATRÍCULA`, `salt` = o do HUB (diferente: a chave do HUB foi trocada);
    - `ct` do acesso = a chave dos dados (AES-GCM 256) cifrada com a chave do HUB; `dados.ct` = o JSON do monitor.
+   - opcionais, para o aviso no celular: `push:{chave}` (chave pública VAPID) e `tk:{iv, ct}` no acesso (o segredo de aviso
+     do HUB da pessoa, cifrado com a chave do HUB). Erro neles só esconde o sino.
    Mudança aqui tem que ser feita **junto** no MAPI.
 4. **A credencial do HUB só é LIDA**: nunca apagar, copiar ou criar o banco `co-hub-acesso` (sair de todos os apps é no HUB).
 5. **O service worker (`sw.js`) só mexe no que é deste app**: caches que começam com `co-coe-v` e pedidos dentro de
    `/CO_COE/`. Outros apps moram no mesmo endereço; apagar o cache deles quebra o offline de todo mundo.
-6. **Não carregar nada de fora**: sem CDNs, fontes externas, analytics (o `index.html` tem CSP `default-src 'self'`).
-7. Acesso perdido (sem o app no perfil, chave do HUB trocada): o app apaga a cópia cifrada do `dados.json` do cache.
+6. **Não carregar nada de fora**: sem CDNs, fontes externas, analytics (o `index.html` tem CSP `default-src 'self'`). A
+   única exceção é o `connect-src` da **caixa de entrada** dos avisos (a mesma do Problemas Sistêmicos, `CAIXA` em `push.js`):
+   o app só manda a inscrição de push para lá. Trocou a caixa? Mude `push.js` e a CSP juntos (o teste confere).
+7. Acesso perdido (sem o app no perfil, chave do HUB trocada): o app apaga a cópia cifrada do `dados.json` do cache e
+   desfaz a inscrição de aviso deste aparelho.
+8. **A prova da inscrição de aviso** (`macInscricao` em `push.js`) = HMAC-SHA256 do segredo de aviso sobre
+   `"coe\n" + endpoint + "\n" + p256dh + "\n" + auth`, igual a `coe_app.mac_inscricao` no MAPI. O prefixo `coe` separa da
+   prova do Problemas Sistêmicos (mesmo segredo): não tire.
 
 ## Formato do JSON aberto (o que a tela usa)
 
-`{referencia, coletado_em, periodo:{de, ate}, coe:{kpis, e15, funil, hist, filas, rede, produto, crm}, rt:{aguardando,
-navez, testes, ultimo_min, funil, por_hora, codigos, motivos}, erros:{<consulta>: <mensagem>}}`. Um bloco que falhou
+`{referencia, coletado_em, periodo:{de, ate}, coe:{kpis, e15, funil, hist, filas, rede, produto, crm, d7}, rt:{aguardando,
+navez, testes, ultimo_min, funil, por_hora, codigos, motivos, d7}, erros:{<consulta>: <mensagem>}}`. Um bloco que falhou
 **não vem** (e o nome da consulta está em `erros`): o app tem que aguentar qualquer bloco ausente.
 
 ## Onde mexer
@@ -56,12 +64,15 @@ navez, testes, ultimo_min, funil, por_hora, codigos, motivos}, erros:{<consulta>
 | Cards de cada área, textos do ⓘ | `telaCoe()`, `telaRt()` e `INFO` em `app.js` |
 | Gráficos de linhas (legenda liga/desliga, leitura do horário) | `multi()` em `app.js`; contas em `grafico.js` |
 | Encerramentos por hora (Colunas, Lista, Acumulado) | `encerramentos()` em `app.js` |
-| Limite de "parado" (integração, job de re-teste) | `PARADO_MIN` em `app.js` |
+| Limite de "parado" (integração, job de re-teste) | `PARADO_MIN` em `app.js` (o do aviso no celular é o `PARADO_MIN` do `coe_app.py`) |
+| Comparação com D7 (chips) | `chipD7()` em `app.js`; os números D7 vêm do MAPI (`coe.d7`, `rt.d7`) |
+| Sino (aviso no celular) | `sino()` / `alternarSino()` em `app.js`, `push.js`, eventos `push` no `sw.js` |
+| Texto do compartilhar | `textoResumo()` em `app.js` |
 | **Quais números vêm, regra do re-teste, consultas** | **não é aqui**: é o `coe_app.py` do MAPI |
 
 ## Antes de cada push
 
-1. **Versão igual** em `APP_VERSION` (`app.js`), `VERSAO` (`cripto.js`), `VERSION` (`sw.js`) e nos `?v=` do `index.html`.
+1. **Versão igual** em `APP_VERSION` (`app.js`), `VERSAO` (`cripto.js` e `push.js`), `VERSION` (`sw.js`) e nos `?v=` do `index.html`.
    Com versões diferentes o app se recarrega até elas baterem.
 2. Arquivo novo que o app usa? Inclua em `CORE` no `sw.js`.
 3. `npm test` e teste no navegador em ~390 px, claro e escuro.
@@ -72,7 +83,7 @@ navez, testes, ultimo_min, funil, por_hora, codigos, motivos}, erros:{<consulta>
 ```
 # pacote de teste com as funções do MAPI (dados inventados), pessoa A0001 / lago-vento-pedra
 MAPI_DIR=../mapi5 python tests/gerar_fixture.py
-mkdir -p /tmp/site/CO_COE && cp -r index.html *.js manifest.webmanifest icons /tmp/site/CO_COE/
+mkdir -p /tmp/site/CO_COE && cp -r index.html *.js manifest.webmanifest icons /tmp/site/CO_COE/   # inclui push.js
 python -c "import json;json.dump(json.load(open('tests/fixtures/pacote.json'))['pacote'],open('/tmp/site/CO_COE/dados.json','w'))"
 cd /tmp/site && python -m http.server 8000          # http://localhost:8000/CO_COE/
 ```
@@ -88,8 +99,9 @@ Sem a credencial do HUB no navegador o app mostra "Entre pelo HUB". Para testar,
 | `index.html` | estrutura, estilos (paleta da empresa, modo escuro), CSP, troca COE / Re-teste |
 | `app.js` | telas das duas áreas, ⓘ de cada card, gráficos com toque; conferência a cada minuto |
 | `grafico.js` | contas dos gráficos (escala, acumulado, toque); roda também no Node |
-| `cripto.js` | lê a credencial do HUB e abre o `dados.json` |
+| `cripto.js` | lê a credencial do HUB e abre o `dados.json` (e o segredo de aviso, `extrasPush`) |
+| `push.js` | inscrição de aviso no celular e entrega à caixa de entrada |
 | `sw.js` | cache offline só deste app |
 | `manifest.webmanifest`, `icons/` | instalação no celular |
-| `tests/` | criptografia (pacote do MAPI), gráficos e versões |
+| `tests/` | criptografia (pacote do MAPI), aviso (prova igual à do MAPI), gráficos e versões |
 | `dados.json` | **gerado pelo MAPI — não editar** |

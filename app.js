@@ -6,17 +6,20 @@
  *
  * Duas áreas, trocadas no topo: COE e Re-teste. Período sempre de hoje, 00:00, até a coleta.
  * Cada card vem de uma consulta própria no MAPI: se ela falhou, o card aparece como indisponível (campo `erros`).
+ * D7 = mesmo dia da semana passada até o mesmo horário (vem pronto do MAPI). O sino liga o aviso no celular (push.js)
+ * e o botão de compartilhar manda o resumo da área aberta (WhatsApp, Teams…).
  */
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.1.0';
   const CONFERIR_MS = 60 * 1000;
   const FRESCO_MIN = 15;              // coleta mais velha que isso: o ponto do topo fica cinza
   const PARADO_MIN = 10;              // integração ou job de re-teste sem andar há mais que isso: alerta
   const HUB_URL = new URL('/', location.href).href;
 
-  const G = window.COEGrafico, K = window.COECripto;
+  const G = window.COEGrafico, K = window.COECripto, P = window.COEPush;
+  const MARCA_PUSH = 'co-coe-push';   // última inscrição entregue ao MAPI (localStorage): não reenviar à toa
   const $ = id => document.getElementById(id);
   const esc = v => v == null ? '' : String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nf = new Intl.NumberFormat('pt-BR');
@@ -27,7 +30,7 @@
   const horaDe = iso => (iso || '').slice(11, 16) || '—';
   const minEntre = (a, b) => { const x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? null : Math.max(0, Math.round((y - x) / 60000)); };
 
-  let dados = null, cred = null, gerado = null;
+  let dados = null, cred = null, gerado = null, pushCtx = null;
   let area = 'coe';
   const abertos = {};                 // ⓘ abertos (sobrevivem ao redesenho)
   const ESTADO = { e15: { off: {}, sel: null }, hist: { off: {}, sel: null }, acum: { off: {}, sel: null }, enc: { forma: 'col', sel: null } };
@@ -37,7 +40,7 @@
     eleg_hora: 'Mesma regra dos elegíveis, só os que integraram na última hora.',
     online: 'Colaboradores com sessão aberta no momento da coleta.',
     integ: 'Hora da integração mais recente na fila. Se parar de andar, a integração travou.',
-    e15: 'A cada 15 min, de hoje até agora: entrantes, ouvidoria, repetidos, sincronizados, conectados e elegíveis (mesma conta do Grafana). Toque na legenda para esconder uma linha e no gráfico para ler um horário.',
+    e15: 'A cada 15 min, de hoje até agora: entrantes, ouvidoria, repetidos, sincronizados, conectados e elegíveis (mesma conta do Grafana). Toque na legenda para esconder uma linha e no gráfico para ler um horário. D7 = entrantes do mesmo dia da semana passada até o mesmo horário (mesma fonte do histórico).',
     hist: 'Entrantes por hora hoje contra o mesmo dia da semana há 7, 14 e 21 dias (fila e expurgo).',
     funil: 'Dos BDs que entraram hoje: quantos estão sincronizados, conectados e elegíveis.',
     filas: 'Situação atual dos BDs elegíveis na fila do COE.',
@@ -47,7 +50,7 @@
     agu: 'PONs com re-teste pendente dentro da regra (sem repetido, passagem em campo, ouvidoria e Anatel), ainda na fila.',
     navez: 'Re-teste liberado (passaram 30 min do último teste) e ainda não pego. Crescendo sem parar = o job não está dando conta.',
     ult: 'Minutos desde o último teste de sincronismo gravado. Acima de 10 min em operação = job parado.',
-    testes: 'Todos os testes de sincronismo de hoje (primeiro teste e re-testes).',
+    testes: 'Todos os testes de sincronismo de hoje (primeiro teste e re-testes). A variação compara com o mesmo dia da semana passada, até o mesmo horário (D7).',
     funilRt: 'PONs dentro da regra que deram DOWN/NOT_CONFIGURED hoje; quantas voltaram UP e quantas o re-teste encerrou.',
     hora: 'Encerramentos automáticos de hoje (matrícula RBCOSP04) por hora. Escolha a forma: colunas (toque numa coluna para o detalhe por código), lista ou acumulado do dia.',
     cod: 'Encerramentos automáticos de hoje, por código.',
@@ -76,7 +79,7 @@
 
   async function carregar() {
     cred = await K.lerCredHub();
-    if (!cred) { dados = null; await apagarCopia(); return telaAviso('Entre pelo HUB',
+    if (!cred) { dados = null; pushCtx = null; sino(); await apagarCopia(); return telaAviso('Entre pelo HUB',
       'Este app abre com o login do HUB dos apps. Entre no HUB com sua matrícula e chave e toque no atalho do Monitor COE.', true); }
     let pacote;
     try { pacote = await baixar(); }
@@ -88,18 +91,39 @@
     try {
       dados = await K.abrir(pacote, cred);
       gerado = pacote.gerado_em || null;
+      pushCtx = await K.extrasPush(pacote, cred);
     } catch (e) {
-      if (e.code === 'sem_acesso') { dados = null; await apagarCopia(); return telaAviso('Sem acesso', e.message, true); }
+      if (e.code === 'sem_acesso') {
+        dados = null; pushCtx = null; await apagarCopia();
+        try { await P.desinscrever(await navigator.serviceWorker.getRegistration()); } catch (x) { /* segue */ }
+        sino();
+        return telaAviso('Sem acesso', e.message, true);
+      }
       return telaAviso('Não deu para abrir', e.message, false);
     }
     marcarOffline(false);
     desenhar();
+    sino(true);
   }
 
   function marcarOffline(sim) {
     const o = $('offline');
     o.hidden = !sim;
     o.textContent = sim ? 'Sem conexão: mostrando os últimos dados abertos.' : '';
+  }
+
+  // ---------- D7 ----------
+  // variação de hoje contra o mesmo dia da semana passada, até o mesmo horário. D7 zerado = sem histórico: sem chip.
+  function variacaoD7(hoje, d7) {
+    if (hoje == null || !d7) return null;
+    return Math.round(1000 * (hoje - d7) / d7) / 10;
+  }
+  const fmtVar = v => (v > 0 ? '+' : v < 0 ? '−' : '') + String(Math.abs(v)).replace('.', ',') + '%';
+  function chipD7(hoje, d7) {
+    const v = variacaoD7(hoje, d7);
+    if (v == null) return '';
+    const seta = v > 0 ? '▲' : v < 0 ? '▼' : '●';
+    return `<span class="chip d7" title="D7 até a mesma hora: ${esc(n(d7))}">${seta} ${esc(fmtVar(v))} vs D7</span>`;
   }
 
   // ---------- peças ----------
@@ -144,7 +168,7 @@
   }
 
   // encerramentos por hora: colunas (padrão), lista ou acumulado
-  function encerramentos(ph) {
+  function encerramentos(ph, d7) {
     const st = ESTADO.enc, v = ph.total, rot = ph.horas;
     const seletor = `<div class="mini" role="group" aria-label="Forma">${[['col', 'Colunas'], ['lista', 'Lista'], ['acum', 'Acumulado']].map(([k, r]) => `<button type="button" data-forma="${k}" aria-pressed="${st.forma === k}">${r}</button>`).join('')}</div>`;
     const totalDia = v.reduce((a, b) => a + b, 0);
@@ -167,7 +191,8 @@
         : `<b>${esc(rot[st.sel])}</b> · ${n(v[st.sel])} encerramentos` + Object.entries(ph.por_codigo || {}).filter(([, x]) => x[st.sel]).sort((a, b) => b[1][st.sel] - a[1][st.sel]).map(([c, x]) => ` · ${esc(c)}: ${n(x[st.sel])}`).join('');
       corpo = `<svg class="graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="Encerramentos por hora">${cols}${rx}</svg><div class="leit" aria-live="polite">${det}</div>`;
     }
-    return { seletor, corpo: corpo + `<span class="toque">Total hoje: <b class="num">${n(totalDia)}</b></span>` };
+    return { seletor, corpo: corpo + `<span class="toque">Total hoje: <b class="num">${n(totalDia)}</b>`
+      + (d7 ? ` · D7 até a mesma hora: <b class="num">${n(d7.encerrados)}</b> ${chipD7(totalDia, d7.encerrados)}` : '') + '</span>' };
   }
 
   // ---------- áreas ----------
@@ -179,9 +204,10 @@
     const out = [`<div class="g2">${kpi('Elegíveis hoje', 'eleg_hoje', erros.eleg ? '—' : n(kp.eleg_hoje), 'desde 00:00', true)}${kpi('Elegíveis última hora', 'eleg_hora', erros.eleg ? '—' : n(kp.eleg_hora), 'última hora')}${kpi('Usuários online', 'online', erros.online ? '—' : n(kp.online), 'na coleta')}${kpi('Última integração', 'integ', erros.integracao ? '—' : horaDe(kp.ultima_integracao), chipInteg)}</div>` +
       (semKpi ? '<p class="vazio">Algum número acima está indisponível agora (consulta falhou no MAPI).</p>' : '')];
 
+    const linhaD7 = c.d7 ? `<p class="d7l">Até agora: <b class="num">${esc(n(c.d7.entrantes))}</b> entrantes · D7 até a mesma hora: <b class="num">${esc(n(c.d7.entrantes_d7))}</b> ${chipD7(c.d7.entrantes, c.d7.entrantes_d7)}</p>` : '';
     if (c.e15 && c.e15.slots.length) {
       const S = c.e15.series;
-      out.push(sec("Entrantes BD's - Total", 'e15', multi('e15', c.e15.slots, [
+      out.push(sec("Entrantes BD's - Total", 'e15', linhaD7 + multi('e15', c.e15.slots, [
         { k: 'entrantes', nome: 'Volume de entrantes', cor: '--s4', valores: S.entrantes },
         { k: 'ouvidoria', nome: 'Ouvidoria', cor: '--s3', valores: S.ouvidoria },
         { k: 'repetidos', nome: 'Repetidos', cor: '--s2', valores: S.repetidos },
@@ -212,11 +238,11 @@
     const t = r.testes || {};
     const ult = r.ultimo_min;
     const chipUlt = ult == null ? '' : `<span class="chip ${ult > PARADO_MIN ? 'bad' : 'ok'}">${ult > PARADO_MIN ? 'job parado?' : 'job rodando'}</span>`;
-    const out = [`<div class="g2">${kpi('Aguardando re-teste', 'agu', erros.rt_fila ? '—' : n(r.aguardando), 'dentro da regra', true)}${kpi('Na vez agora', 'navez', erros.rt_fila ? '—' : n(r.navez), 'liberados, não pegos')}${kpi('Último teste', 'ult', erros.rt_testes || ult == null ? '—' : n(ult) + ' min', chipUlt)}${kpi('Testes hoje', 'testes', erros.rt_testes ? '—' : n(t.total), erros.rt_testes ? '' : `${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro`)}</div>` +
+    const out = [`<div class="g2">${kpi('Aguardando re-teste', 'agu', erros.rt_fila ? '—' : n(r.aguardando), 'dentro da regra', true)}${kpi('Na vez agora', 'navez', erros.rt_fila ? '—' : n(r.navez), 'liberados, não pegos')}${kpi('Último teste', 'ult', erros.rt_testes || ult == null ? '—' : n(ult) + ' min', chipUlt)}${kpi('Testes hoje', 'testes', erros.rt_testes ? '—' : n(t.total), erros.rt_testes ? '' : `${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro` + (r.d7 ? ' ' + chipD7(t.total, r.d7.testes) : ''))}</div>` +
       (erros.rt_fila || erros.rt_testes ? '<p class="vazio">Algum número acima está indisponível agora (consulta falhou no MAPI).</p>' : '')];
     out.push(sec('Funil do re-teste hoje', 'funilRt', r.funil ? funil([['Entraram em re-teste', r.funil.entraram], ['Voltaram UP', r.funil.voltaram],
       ['Encerrados pelo re-teste', r.funil.encerrados]], r.funil.pct) : indisp()));
-    if (r.por_hora) { const e = encerramentos(r.por_hora); out.push(sec('Encerramentos automáticos por hora', 'hora', e.corpo, e.seletor)); }
+    if (r.por_hora) { const e = encerramentos(r.por_hora, r.d7); out.push(sec('Encerramentos automáticos por hora', 'hora', e.corpo, e.seletor)); }
     else out.push(sec('Encerramentos automáticos por hora', 'hora', indisp()));
     out.push(sec('Encerramentos por código', 'cod', r.codigos ? barras(r.codigos, '--s4') : indisp()));
     out.push(sec('Não recuperados, por motivo', 'motivos', r.motivos ? barras(r.motivos, '--s5') : indisp()));
@@ -226,6 +252,7 @@
   // ---------- telas ----------
   function telaAviso(titulo, texto, comHub) {
     $('areas').hidden = true;
+    $('btCompartilhar').hidden = true;
     $('sub').innerHTML = '';
     $('conteudo').innerHTML = `<div class="aviso-tela"><div class="ic" aria-hidden="true">🛰️</div><h2>${esc(titulo)}</h2><p>${esc(texto)}</p>
       ${comHub ? `<a class="bt" href="${esc(HUB_URL)}">Abrir o HUB</a>` : '<button type="button" class="bt" id="btTentar">Tentar de novo</button>'}</div>`;
@@ -243,6 +270,7 @@
     $('sub').innerHTML = `<span class="vivo${fresco ? '' : ' parado'}" aria-hidden="true"></span> Coleta às ${esc(horaDe(d.coletado_em))}`;
     const seg = $('areas');
     seg.hidden = false;
+    $('btCompartilhar').hidden = false;
     seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.area === area)));
     const aviso = d.referencia && d.referencia !== hojeISO()
       ? `<div class="faixa">Dados de ${esc(dataBR(d.referencia))}: a publicação de hoje ainda não começou.</div>` : '';
@@ -270,10 +298,102 @@
     }
   }
 
+  // ---------- aviso no celular (sino) ----------
+  const SINO_OFF = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="M3 3l18 18"/>';
+  const SINO_ON = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>';
+  const lerMarca = () => { try { return localStorage.getItem(MARCA_PUSH); } catch (e) { return null; } };
+  const gravarMarca = v => { try { if (v) localStorage.setItem(MARCA_PUSH, v); else localStorage.removeItem(MARCA_PUSH); } catch (e) { /* segue */ } };
+  const regSw = async () => ('serviceWorker' in navigator ? (await navigator.serviceWorker.getRegistration()) || navigator.serviceWorker.ready : null);
+
+  // mostra o sino (só com push disponível) e, se já está ligado, reentrega a inscrição quando ela mudou
+  async function sino(conferir) {
+    const b = $('btSino');
+    if (!P.disponivel(pushCtx && cred ? pushCtx : null)) { b.hidden = true; return; }
+    let reg = null, sub = null;
+    try { reg = await regSw(); sub = await P.inscricaoAtual(reg); } catch (e) { /* sem service worker */ }
+    const ligado = !!sub && Notification.permission === 'granted';
+    b.hidden = false;
+    b.setAttribute('aria-pressed', String(ligado));
+    b.setAttribute('aria-label', ligado ? 'Avisos ligados neste aparelho (tocar desliga)' : 'Ligar avisos neste aparelho');
+    b.title = ligado ? 'Avisos ligados' : 'Ligar avisos';
+    b.querySelector('svg').innerHTML = ligado ? SINO_ON : SINO_OFF;
+    if (ligado && conferir) {
+      try { gravarMarca(await P.registrar({ reg, chave: pushCtx.chave, segredo: pushCtx.segredo, cred, guardado: lerMarca() })); }
+      catch (e) { /* tenta de novo na próxima conferência */ }
+    }
+  }
+
+  async function alternarSino() {
+    const b = $('btSino');
+    const reg = await regSw();
+    if (b.getAttribute('aria-pressed') === 'true') {
+      await P.desinscrever(reg); gravarMarca(null);
+      aviso('Avisos desligados neste aparelho.');
+      return sino();
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { aviso('O navegador não deixou mostrar avisos. Libere as notificações do app nas configurações.'); return sino(); }
+      gravarMarca(await P.registrar({ reg, chave: pushCtx.chave, segredo: pushCtx.segredo, cred, forcar: true }));
+      aviso('Avisos ligados: você recebe quando a integração ou o re-teste param e quando voltam.');
+    } catch (e) { aviso(e.message || 'Não deu para ligar os avisos.'); }
+    sino();
+  }
+
+  let avisoT = null;
+  function aviso(txt) {
+    const a = $('aviso');
+    a.textContent = txt; a.hidden = false;
+    clearTimeout(avisoT); avisoT = setTimeout(() => { a.hidden = true; }, 4500);
+  }
+
+  // ---------- compartilhar ----------
+  // texto da área aberta, para WhatsApp/Teams (*negrito* no WhatsApp). Só o que está na tela.
+  function textoResumo() {
+    const d = dados, ate = (d.periodo && d.periodo.ate) || horaDe(d.coletado_em), erros = d.erros || {};
+    const vd7 = (h, x) => { const v = variacaoD7(h, x); return v == null ? '' : ` (${fmtVar(v)} vs D7)`; };
+    const L = [];
+    if (area === 'coe') {
+      const c = d.coe || {}, k = c.kpis || {};
+      L.push(`*Monitor COE · COE* — hoje até ${ate}`);
+      if (!erros.eleg) L.push(`Elegíveis hoje: ${n(k.eleg_hoje)} (última hora: ${n(k.eleg_hora)})`);
+      if (c.d7) L.push(`Entrantes até agora: ${n(c.d7.entrantes)}${vd7(c.d7.entrantes, c.d7.entrantes_d7)}`);
+      if (c.funil) L.push(`Funil: ${n(c.funil.entrantes)} entrantes → ${n(c.funil.sincronizados)} sincronizados → ${n(c.funil.conectados)} conectados → ${n(c.funil.elegiveis)} elegíveis`);
+      if (!erros.online) L.push(`Usuários online: ${n(k.online)}`);
+      if (!erros.integracao && k.ultima_integracao) L.push(`Última integração: ${horaDe(k.ultima_integracao)}`);
+      if (c.filas) L.push('Filas: ' + c.filas.map(([r, v]) => `${r} ${n(v)}`).join(' · '));
+    } else {
+      const r = d.rt || {}, t = r.testes || {};
+      L.push(`*Monitor COE · Re-teste* — hoje até ${ate}`);
+      if (!erros.rt_fila) L.push(`Aguardando re-teste: ${n(r.aguardando)} · na vez: ${n(r.navez)}`);
+      if (!erros.rt_testes) {
+        if (r.ultimo_min != null) L.push(`Último teste: há ${n(r.ultimo_min)} min`);
+        L.push(`Testes hoje: ${n(t.total)} (${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro)${r.d7 ? vd7(t.total, r.d7.testes) : ''}`);
+      }
+      if (r.funil) L.push(`Funil: ${n(r.funil.entraram)} entraram → ${n(r.funil.voltaram)} voltaram UP → ${n(r.funil.encerrados)} encerrados (recuperação ${pct(r.funil.pct)})`);
+      if (r.por_hora) { const tot = r.por_hora.total.reduce((a, b) => a + b, 0); L.push(`Encerramentos automáticos: ${n(tot)}${r.d7 ? vd7(tot, r.d7.encerrados) : ''}`); }
+      if (r.motivos && r.motivos.length) L.push('Não recuperados: ' + r.motivos.slice(0, 3).map(([m, v]) => `${m} ${n(v)}`).join(' · '));
+    }
+    L.push(`Coleta às ${horaDe(d.coletado_em)}`);
+    return L.join('\n');
+  }
+
+  async function compartilhar() {
+    if (!dados) return;
+    const texto = textoResumo();
+    try {
+      if (navigator.share) { await navigator.share({ text: texto }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(texto); aviso('Resumo copiado: cole no WhatsApp ou no Teams.'); }
+    catch (e) { aviso('Não deu para compartilhar neste aparelho.'); }
+  }
+
   // ---------- início ----------
   function iniciar() {
     $('btHub').href = HUB_URL;
     $('btAtualizar').onclick = () => carregar();
+    $('btSino').onclick = () => alternarSino();
+    $('btCompartilhar').onclick = () => compartilhar();
     $('conteudo').addEventListener('click', aoTocar);
     $('areas').querySelectorAll('button').forEach(b => { b.onclick = () => { area = b.dataset.area; desenhar(); window.scrollTo(0, 0); }; });
     if (K.VERSAO !== APP_VERSION) {         // arquivos de versões diferentes no cache: atualiza antes de abrir

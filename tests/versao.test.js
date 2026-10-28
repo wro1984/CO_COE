@@ -10,6 +10,7 @@ test('versões iguais', () => {
   const app = ler('app.js').match(/APP_VERSION = '([^']+)'/)[1];
   assert.strictEqual(ler('cripto.js').match(/VERSAO = '([^']+)'/)[1], app);
   assert.strictEqual(ler('sw.js').match(/VERSION = '([^']+)'/)[1], app);
+  assert.strictEqual(ler('push.js').match(/VERSAO = '([^']+)'/)[1], app);
   const vs = [...ler('index.html').matchAll(/\?v=([0-9.]+)/g)].map(m => m[1]);
   assert.ok(vs.length >= 3);
   vs.forEach(v => assert.strictEqual(v, app));
@@ -17,12 +18,15 @@ test('versões iguais', () => {
 
 test('todo arquivo do app está no CORE do service worker', () => {
   const core = ler('sw.js');
-  for (const f of ['index.html', 'app.js', 'cripto.js', 'grafico.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'])
+  for (const f of ['index.html', 'app.js', 'cripto.js', 'grafico.js', 'push.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'])
     assert.ok(core.includes(`'${f}'`), f);
 });
 
 test('nada carregado de fora', () => {
   const html = ler('index.html');
   assert.ok(!/(src|href)="https?:/.test(html));
+  // fora do próprio endereço, só a caixa de entrada dos avisos (a mesma do push.js)
+  const fora = (html.match(/connect-src ([^;]+);/)[1].match(/https:\/\/[^ ]+/g) || []);
+  assert.deepStrictEqual(fora, [require('../push.js').CAIXA]);
   assert.match(html, /default-src 'self'/);
 });
