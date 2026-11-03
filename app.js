@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   const CONFERIR_MS = 60 * 1000;
   const FRESCO_MIN = 15;              // coleta mais velha que isso: o ponto do topo fica cinza
   const PARADO_MIN = 10;              // integração ou job de re-teste sem andar há mais que isso: alerta
@@ -33,7 +33,8 @@
   let dados = null, cred = null, gerado = null, pushCtx = null;
   let area = 'coe';
   const abertos = {};                 // ⓘ abertos (sobrevivem ao redesenho)
-  const ESTADO = { e15: { off: {}, sel: null }, hist: { off: {}, sel: null }, acum: { off: {}, sel: null }, enc: { forma: 'col', sel: null } };
+  const ESTADO = { e15: { off: {}, sel: null }, hist: { off: {}, sel: null }, acum: { off: {}, sel: null }, acum2: { off: {}, sel: null },
+    enc: { forma: 'col', sel: null }, encm: { forma: 'col', sel: null } };
 
   const INFO = {
     eleg_hoje: 'BDs elegíveis que entraram hoje: na fila (agendada, pendente agendamento ou triagem), com sincronismo, carga e conexão válidos, sem repetido, ouvidoria nem passagem em campo.',
@@ -47,13 +48,16 @@
     rede: 'Entrantes de hoje por rede (skill).',
     produto: 'Entrantes de hoje por produto (skill).',
     crm: 'Entrantes de hoje por CRM: Sophia (PON com hífen) ou NEXT.',
-    agu: 'PONs com re-teste pendente dentro da regra (sem repetido, passagem em campo, ouvidoria e Anatel), ainda na fila.',
-    navez: 'Re-teste liberado (passaram 30 min do último teste) e ainda não pego. Crescendo sem parar = o job não está dando conta.',
+    encHoje: 'PONs que o robô (RBCOSP04) encerrou hoje: tratativa do robô com código de encerramento (sincronismo, carga, VLAN, VOIP, bloqueio ou desbloqueio WiFi) e fila em ENCERRADA. Conta PON, mesmo que uma pessoa tenha mexido depois. A variação compara com o mesmo dia da semana passada, até o mesmo horário (D7).',
+    encMes: 'PONs que o robô encerrou do dia 1 do mês até agora, com a mesma regra do card de hoje.',
+    pendEnt: 'Entrantes ainda sem o primeiro teste de sincronismo (fila de re-teste, sem thread, fora quem o robô já encerrou).',
+    pendBack: 'Backlog de PONs esperando teste de sincronismo (sem thread, na fila, fora quem o robô já encerrou). Crescendo sem parar = o job não está dando conta.',
     ult: 'Minutos desde o último teste de sincronismo gravado. Acima de 10 min em operação = job parado.',
     testes: 'Todos os testes de sincronismo de hoje (primeiro teste e re-testes). A variação compara com o mesmo dia da semana passada, até o mesmo horário (D7).',
     funilRt: 'PONs dentro da regra que deram DOWN/NOT_CONFIGURED hoje; quantas voltaram UP e quantas o re-teste encerrou.',
     hora: 'Encerramentos automáticos de hoje (matrícula RBCOSP04) por hora. Escolha a forma: colunas (toque numa coluna para o detalhe por código), lista ou acumulado do dia.',
-    cod: 'Encerramentos automáticos de hoje, por código.',
+    dia: 'Encerramentos automáticos do mês, por dia. Escolha a forma: colunas (toque numa coluna para o detalhe por código), lista ou acumulado do mês.',
+    cod: 'Encerramentos automáticos de hoje, por código (PON distintos).',
     motivos: 'Dos que entraram em re-teste e não foram encerrados: em que situação pararam.'
   };
 
@@ -167,32 +171,33 @@
       ${series.length > 1 ? `<div class="leg">${series.map(s => { const ult = [...s.valores].reverse().find(v => v != null); return `<button type="button" data-serie="${id}:${s.k}" aria-pressed="${!st.off[s.k]}"><i style="background:var(${s.cor})"></i>${esc(s.nome)} <b class="num">${esc(n(ult == null ? 0 : ult))}</b></button>`; }).join('')}</div>` : ''}`;
   }
 
-  // encerramentos por hora: colunas (padrão), lista ou acumulado
-  function encerramentos(ph, d7) {
-    const st = ESTADO.enc, v = ph.total, rot = ph.horas;
-    const seletor = `<div class="mini" role="group" aria-label="Forma">${[['col', 'Colunas'], ['lista', 'Lista'], ['acum', 'Acumulado']].map(([k, r]) => `<button type="button" data-forma="${k}" aria-pressed="${st.forma === k}">${r}</button>`).join('')}</div>`;
-    const totalDia = v.reduce((a, b) => a + b, 0);
+  // encerramentos por hora (alvo 'enc') ou por dia do mês (alvo 'encm'): colunas (padrão), lista ou acumulado
+  function encerramentos(ph, o) {
+    const alvo = o.alvo, st = ESTADO[alvo], v = ph.total, rot = ph.horas || ph.dias;
+    const seletor = `<div class="mini" role="group" aria-label="Forma">${[['col', 'Colunas'], ['lista', 'Lista'], ['acum', 'Acumulado']].map(([k, r]) => `<button type="button" data-alvo="${alvo}" data-forma="${k}" aria-pressed="${st.forma === k}">${r}</button>`).join('')}</div>`;
+    const soma = v.reduce((a, b) => a + b, 0);
+    const totalDia = o.total != null ? o.total : soma;       // PON distintos (a soma das colunas pode contar um PON em duas)
     let corpo;
-    if (!totalDia) corpo = '<p class="vazio">Nenhum encerramento automático hoje até agora.</p>';
+    if (!soma) corpo = `<p class="vazio">${esc(o.vazio)}</p>`;
     else if (st.forma === 'lista') {
       const m = Math.max(1, ...v);
       corpo = `<div class="lst">${v.map((x, i) => `<span class="num">${esc(rot[i])}</span><span class="tr"><i style="width:${(100 * x / m).toFixed(1)}%"></i></span><b class="num">${n(x)}</b>`).join('')}</div>`;
     } else if (st.forma === 'acum') {
-      corpo = multi('acum', rot, [{ k: 'acum', nome: 'Acumulado do dia', cor: '--s4', valores: G.acumulado(v) }], 300, 120, 3);
+      corpo = multi(alvo === 'enc' ? 'acum' : 'acum2', rot, [{ k: 'acum', nome: o.acumulado, cor: '--s4', valores: G.acumulado(v) }], 300, 120, rot.length > 24 ? 5 : 3);
     } else {
       const w = 300, h = 100, geo = G.colunas(v, w, h);
       if (st.sel != null && st.sel >= v.length) st.sel = null;
       const cols = geo.barras.map((b, i) => `<rect x="${(b.x + 1).toFixed(1)}" y="${b.y.toFixed(1)}" width="${Math.max(1, geo.bw - 2).toFixed(1)}" height="${b.alt.toFixed(1)}" rx="2" fill="var(${st.sel === i ? '--s1' : '--s4'})"/>` +
         (b.v ? `<text x="${(b.x + geo.bw / 2).toFixed(1)}" y="${(b.y - 3).toFixed(1)}" text-anchor="middle" class="vl">${b.v}</text>` : '') +
-        `<rect x="${b.x.toFixed(1)}" y="0" width="${geo.bw.toFixed(1)}" height="${h}" fill="transparent" data-col="${i}"><title>${esc(rot[i])}: ${b.v}</title></rect>`).join('');
-      const passo = v.length > 12 ? 6 : 3;
+        `<rect x="${b.x.toFixed(1)}" y="0" width="${geo.bw.toFixed(1)}" height="${h}" fill="transparent" data-alvo="${alvo}" data-col="${i}"><title>${esc(rot[i])}: ${b.v}</title></rect>`).join('');
+      const passo = v.length > 24 ? 5 : v.length > 12 ? 6 : 3;
       const rx = rot.map((t, i) => (i % passo === 0 || i === v.length - 1 ? `<text x="${(2 + i * geo.bw + geo.bw / 2).toFixed(1)}" y="${h - 2}" text-anchor="middle">${esc(t)}</text>` : '')).join('');
       const det = st.sel == null ? 'Toque numa coluna para ver o detalhe por código.'
-        : `<b>${esc(rot[st.sel])}</b> · ${n(v[st.sel])} encerramentos` + Object.entries(ph.por_codigo || {}).filter(([, x]) => x[st.sel]).sort((a, b) => b[1][st.sel] - a[1][st.sel]).map(([c, x]) => ` · ${esc(c)}: ${n(x[st.sel])}`).join('');
-      corpo = `<svg class="graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="Encerramentos por hora">${cols}${rx}</svg><div class="leit" aria-live="polite">${det}</div>`;
+        : `<b>${esc(rot[st.sel])}</b> · ${n(v[st.sel])} encerramentos` + Object.entries(ph.por_codigo || {}).filter(([, x]) => x[st.sel]).sort((a, b) => b[1][st.sel] - a[1][st.sel]).map(([c, x]) => ` · ${esc((o.rotulos || {})[c] || c)}: ${n(x[st.sel])}`).join('');
+      corpo = `<svg class="graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(o.aria)}">${cols}${rx}</svg><div class="leit" aria-live="polite">${det}</div>`;
     }
-    return { seletor, corpo: corpo + `<span class="toque">Total hoje: <b class="num">${n(totalDia)}</b>`
-      + (d7 ? ` · D7 até a mesma hora: <b class="num">${n(d7.encerrados)}</b> ${chipD7(totalDia, d7.encerrados)}` : '') + '</span>' };
+    return { seletor, corpo: corpo + `<span class="toque">${esc(o.rotuloTotal)}: <b class="num">${n(totalDia)}</b>`
+      + (o.d7 ? ` · D7 até a mesma hora: <b class="num">${n(o.d7.encerrados)}</b> ${chipD7(totalDia, o.d7.encerrados)}` : '') + '</span>' };
   }
 
   // ---------- áreas ----------
@@ -234,17 +239,26 @@
     return out.join('');
   }
 
+  // Re-teste, na ordem de leitura do celular: o que o robô encerrou, o que está pendente, o job e os testes.
   function telaRt(r, erros) {
-    const t = r.testes || {};
+    const t = r.testes || {}, e = r.enc || {}, p = r.pendentes || {};
     const ult = r.ultimo_min;
     const chipUlt = ult == null ? '' : `<span class="chip ${ult > PARADO_MIN ? 'bad' : 'ok'}">${ult > PARADO_MIN ? 'job parado?' : 'job rodando'}</span>`;
-    const out = [`<div class="g2">${kpi('Aguardando re-teste', 'agu', erros.rt_fila ? '—' : n(r.aguardando), 'dentro da regra', true)}${kpi('Na vez agora', 'navez', erros.rt_fila ? '—' : n(r.navez), 'liberados, não pegos')}${kpi('Último teste', 'ult', erros.rt_testes || ult == null ? '—' : n(ult) + ' min', chipUlt)}${kpi('Testes hoje', 'testes', erros.rt_testes ? '—' : n(t.total), erros.rt_testes ? '' : `${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro` + (r.d7 ? ' ' + chipD7(t.total, r.d7.testes) : ''))}</div>` +
-      (erros.rt_fila || erros.rt_testes ? '<p class="vazio">Algum número acima está indisponível agora (consulta falhou no MAPI).</p>' : '')];
+    const d7enc = r.d7 && r.d7.encerrados != null ? r.d7.encerrados : null;
+    const semUm = erros.rt_encerramentos || erros.rt_enc_mes || erros.rt_pendentes || erros.rt_ultimo || erros.rt_testes;
+    const out = [`<div class="g2">${kpi('Encerrados hoje', 'encHoje', erros.rt_encerramentos ? '—' : n(e.hoje), 'pelo robô' + (d7enc != null && e.hoje != null ? ' ' + chipD7(e.hoje, d7enc) : ''), true)}${kpi('Encerrados no mês', 'encMes', erros.rt_enc_mes ? '—' : n(e.mes), 'desde o dia 01')}${kpi('Entrantes pendentes', 'pendEnt', erros.rt_pendentes ? '—' : n(p.entrantes), 'sem o 1º teste')}${kpi('Backlog pendentes', 'pendBack', erros.rt_pendentes ? '—' : n(p.backlog), 'esperando teste')}${kpi('Último teste', 'ult', erros.rt_ultimo || ult == null ? '—' : n(ult) + ' min', chipUlt)}${kpi('Testes hoje', 'testes', erros.rt_testes ? '—' : n(t.total), erros.rt_testes ? '' : `${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro` + (r.d7 ? ' ' + chipD7(t.total, r.d7.testes) : ''))}</div>` +
+      (semUm ? '<p class="vazio">Algum número acima está indisponível agora (consulta falhou no MAPI).</p>' : '')];
+    if (r.por_hora) {
+      const x = encerramentos(r.por_hora, { alvo: 'enc', rotulos: r.rotulos, total: e.hoje, d7: r.d7, vazio: 'Nenhum encerramento automático hoje até agora.', acumulado: 'Acumulado do dia', aria: 'Encerramentos por hora', rotuloTotal: 'Total hoje' });
+      out.push(sec('Encerramentos automáticos por hora', 'hora', x.corpo, x.seletor));
+    } else out.push(sec('Encerramentos automáticos por hora', 'hora', indisp()));
+    if (r.por_dia) {
+      const x = encerramentos(r.por_dia, { alvo: 'encm', rotulos: r.rotulos, total: e.mes, d7: null, vazio: 'Nenhum encerramento automático neste mês até agora.', acumulado: 'Acumulado do mês', aria: 'Encerramentos por dia do mês', rotuloTotal: 'Total no mês' });
+      out.push(sec('Encerramentos do mês, por dia', 'dia', x.corpo, x.seletor));
+    } else out.push(sec('Encerramentos do mês, por dia', 'dia', indisp()));
+    out.push(sec('Encerramentos por código hoje', 'cod', r.codigos ? barras(r.codigos, '--s4') : indisp()));
     out.push(sec('Funil do re-teste hoje', 'funilRt', r.funil ? funil([['Entraram em re-teste', r.funil.entraram], ['Voltaram UP', r.funil.voltaram],
       ['Encerrados pelo re-teste', r.funil.encerrados]], r.funil.pct) : indisp()));
-    if (r.por_hora) { const e = encerramentos(r.por_hora, r.d7); out.push(sec('Encerramentos automáticos por hora', 'hora', e.corpo, e.seletor)); }
-    else out.push(sec('Encerramentos automáticos por hora', 'hora', indisp()));
-    out.push(sec('Encerramentos por código', 'cod', r.codigos ? barras(r.codigos, '--s4') : indisp()));
     out.push(sec('Não recuperados, por motivo', 'motivos', r.motivos ? barras(r.motivos, '--s5') : indisp()));
     return out.join('');
   }
@@ -287,9 +301,9 @@
     const sr = ev.target.closest('[data-serie]');
     if (sr) { const [g, k] = sr.dataset.serie.split(':'); ESTADO[g].off[k] = !ESTADO[g].off[k]; return desenhar(); }
     const fm = ev.target.closest('[data-forma]');
-    if (fm) { ESTADO.enc.forma = fm.dataset.forma; ESTADO.enc.sel = null; ESTADO.acum.sel = null; return desenhar(); }
+    if (fm) { const al = fm.dataset.alvo || 'enc'; ESTADO[al].forma = fm.dataset.forma; ESTADO[al].sel = null; ESTADO[al === 'enc' ? 'acum' : 'acum2'].sel = null; return desenhar(); }
     const col = ev.target.closest('[data-col]');
-    if (col) { const k = +col.dataset.col; ESTADO.enc.sel = ESTADO.enc.sel === k ? null : k; return desenhar(); }
+    if (col) { const al = col.dataset.alvo || 'enc', k = +col.dataset.col; ESTADO[al].sel = ESTADO[al].sel === k ? null : k; return desenhar(); }
     const gf = ev.target.closest('[data-graf]');
     if (gf) {
       const r = gf.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * (+gf.dataset.w);
@@ -365,13 +379,14 @@
     } else {
       const r = d.rt || {}, t = r.testes || {};
       L.push(`*Monitor COE · Re-teste* — hoje até ${ate}`);
-      if (!erros.rt_fila) L.push(`Aguardando re-teste: ${n(r.aguardando)} · na vez: ${n(r.navez)}`);
-      if (!erros.rt_testes) {
-        if (r.ultimo_min != null) L.push(`Último teste: há ${n(r.ultimo_min)} min`);
-        L.push(`Testes hoje: ${n(t.total)} (${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro)${r.d7 ? vd7(t.total, r.d7.testes) : ''}`);
-      }
+      const e = r.enc || {}, p = r.pendentes;
+      if (e.hoje != null) L.push(`Encerrados pelo robô hoje: ${n(e.hoje)}${r.d7 && r.d7.encerrados != null ? vd7(e.hoje, r.d7.encerrados) : ''}` + (e.mes != null ? ` · no mês: ${n(e.mes)}` : ''));
+      else if (e.mes != null) L.push(`Encerrados pelo robô no mês: ${n(e.mes)}`);
+      if (p) L.push(`Pendentes: ${n(p.entrantes)} entrantes · backlog ${n(p.backlog)}`);
+      if (r.ultimo_min != null) L.push(`Último teste: há ${n(r.ultimo_min)} min`);
+      if (!erros.rt_testes) L.push(`Testes hoje: ${n(t.total)} (${pct(t.pct_up)} UP · ${pct(t.pct_erro)} erro)${r.d7 ? vd7(t.total, r.d7.testes) : ''}`);
       if (r.funil) L.push(`Funil: ${n(r.funil.entraram)} entraram → ${n(r.funil.voltaram)} voltaram UP → ${n(r.funil.encerrados)} encerrados (recuperação ${pct(r.funil.pct)})`);
-      if (r.por_hora) { const tot = r.por_hora.total.reduce((a, b) => a + b, 0); L.push(`Encerramentos automáticos: ${n(tot)}${r.d7 ? vd7(tot, r.d7.encerrados) : ''}`); }
+      if (r.codigos && r.codigos.length) L.push('Por código: ' + r.codigos.slice(0, 4).map(([c, v]) => `${c.replace(/^\d+ · /, '')} ${n(v)}`).join(' · '));
       if (r.motivos && r.motivos.length) L.push('Não recuperados: ' + r.motivos.slice(0, 3).map(([m, v]) => `${m} ${n(v)}`).join(' · '));
     }
     L.push(`Coleta às ${horaDe(d.coletado_em)}`);

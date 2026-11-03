@@ -2,7 +2,7 @@
 
 App web instalável no celular (PWA) com o acompanhamento do COE de **hoje, 00:00, até a coleta**, em duas áreas trocadas
 no topo: **COE** (elegíveis, Entrantes BD's - Total a cada 15 min, histórico hoje/D7/D14/D21, funil, filas, rede, produto e
-CRM) e **Re-teste** (fila, testes, funil, encerramentos automáticos por hora e por código, não recuperados por motivo).
+CRM) e **Re-teste** (encerrados hoje e no mês, entrantes pendentes e backlog, último teste, testes, encerramentos automáticos por hora, por dia do mês e por código, funil, não recuperados por motivo).
 Publicado pelo GitHub Pages em <https://wro1984.github.io/CO_COE/> a partir da branch `main`. **Todo push na `main` vai
 para o ar em cerca de 1 minuto**, para todos os usuários.
 
@@ -52,8 +52,8 @@ Leia este arquivo inteiro antes de mudar qualquer coisa.
 
 ## Formato do JSON aberto (o que a tela usa)
 
-`{referencia, coletado_em, periodo:{de, ate}, coe:{kpis, e15, funil, hist, filas, rede, produto, crm, d7}, rt:{aguardando,
-navez, testes, ultimo_min, funil, por_hora, codigos, motivos, d7}, erros:{<consulta>: <mensagem>}}`. Um bloco que falhou
+`{referencia, coletado_em, periodo:{de, ate}, coe:{kpis, e15, funil, hist, filas, rede, produto, crm, d7}, rt:{enc:{hoje, mes},
+pendentes:{entrantes, backlog}, testes, ultimo_min, funil, por_hora, por_dia, rotulos, codigos, motivos, d7}, erros:{<consulta>: <mensagem>}}`. Um bloco que falhou
 **não vem** (e o nome da consulta está em `erros`): o app tem que aguentar qualquer bloco ausente.
 
 ## Onde mexer
@@ -63,12 +63,12 @@ navez, testes, ultimo_min, funil, por_hora, codigos, motivos, d7}, erros:{<consu
 | Cores, tamanhos, modo escuro | `<style>` no `index.html` (variáveis em `:root`) |
 | Cards de cada área, textos do ⓘ | `telaCoe()`, `telaRt()` e `INFO` em `app.js` |
 | Gráficos de linhas (legenda liga/desliga, leitura do horário) | `multi()` em `app.js`; contas em `grafico.js` |
-| Encerramentos por hora (Colunas, Lista, Acumulado) | `encerramentos()` em `app.js` |
+| Encerramentos por hora e por dia do mês (Colunas, Lista, Acumulado) | `encerramentos()` em `app.js` (`alvo` `enc` = hora, `encm` = mês) |
 | Limite de "parado" (integração, job de re-teste) | `PARADO_MIN` em `app.js` (o do aviso no celular é o `PARADO_MIN` do `coe_app.py`) |
 | Comparação com D7 (chips) | `chipD7()` em `app.js`; os números D7 vêm do MAPI (`coe.d7`, `rt.d7`) |
 | Sino (aviso no celular) | `sino()` / `alternarSino()` em `app.js`, `push.js`, eventos `push` no `sw.js` |
 | Texto do compartilhar | `textoResumo()` em `app.js` |
-| **Quais números vêm, regra do re-teste, consultas** | **não é aqui**: é o `coe_app.py` do MAPI |
+| **Quais números vêm, regra do re-teste, consultas** | **não é aqui**: é o `coe_app.py` do MAPI. A regra de encerramento (robô + códigos de encerramento + fila ENCERRADA) é a do painel do Grafana (COE_Job); código novo do robô precisa entrar nos dois |
 
 ## Antes de cada push
 

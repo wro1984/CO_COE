@@ -1,6 +1,6 @@
 /* Monitor COE — service worker (escopo /CO_COE/).
  * Outros apps moram no mesmo endereço (wro1984.github.io): este só mexe nos caches que começam com "co-coe-v". */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const CACHE = 'co-coe-v' + VERSION;
 const CORE = ['./', 'index.html', 'app.js', 'cripto.js', 'grafico.js', 'push.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 

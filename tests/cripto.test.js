@@ -24,6 +24,9 @@ test('abre o monitor com a credencial do HUB', async () => {
   assert.deepStrictEqual(r, fx.esperado);
   assert.strictEqual(r.coe.e15.slots.length, r.coe.e15.series.entrantes.length);
   assert.strictEqual(r.rt.por_hora.horas.length, r.rt.por_hora.total.length);
+  assert.strictEqual(r.rt.por_dia.dias.length, r.rt.por_dia.total.length);
+  assert.ok(r.rt.enc.hoje > 0 && r.rt.enc.mes >= r.rt.enc.hoje);
+  assert.deepStrictEqual(Object.keys(r.rt.pendentes), ['entrantes', 'backlog']);
 });
 
 test('a chave digitada de outro jeito no HUB dá a mesma credencial', async () => {
