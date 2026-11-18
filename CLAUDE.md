@@ -105,3 +105,11 @@ Sem a credencial do HUB no navegador o app mostra "Entre pelo HUB". Para testar,
 | `manifest.webmanifest`, `icons/` | instalação no celular |
 | `tests/` | criptografia (pacote do MAPI), aviso (prova igual à do MAPI), gráficos e versões |
 | `dados.json` | **gerado pelo MAPI — não editar** |
+
+## Modo MAPI (desde a v1.3.0)
+
+Dentro do **HUB de Apps do MAPI** o app abre num quadro com `?mapi` na URL (`MODO_MAPI` em `app.js`): não lê a credencial do HUB, não baixa o
+`dados.json`, não registra service worker e não guarda nada no aparelho. Avisa `co-coe:pronto` (só o aviso) e o MAPI responde `co-coe:dados`
+com o conteúdo já aberto (`{dados}` ou `{erro}`); só vale a mensagem da janela pai. Cada conferência automática (a cada minuto) repete o pedido
+(o MAPI divide uma leitura do .242 por minuto entre todos). Fora de um quadro, `?mapi` não muda nada (o login do HUB continua obrigatório). O MAPI só
+entrega os dados a quem tem o app liberado na matrícula. Não mude os nomes das mensagens sem mudar `hub_embed.py` do MAPI junto. Testes: `tests/modo_mapi.test.js`.
