@@ -12,11 +12,13 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.3.0';
   const CONFERIR_MS = 60 * 1000;
   const FRESCO_MIN = 15;              // coleta mais velha que isso: o ponto do topo fica cinza
   const PARADO_MIN = 10;              // integração ou job de re-teste sem andar há mais que isso: alerta
   const HUB_URL = new URL('/', location.href).href;
+  // aberto dentro do "HUB de Apps" do MAPI (?mapi): sem login do HUB, sem baixar o dados.json, sem service worker; os dados vêm do MAPI por mensagem
+  const MODO_MAPI = window.parent !== window && new URLSearchParams(location.search).has('mapi');
 
   const G = window.COEGrafico, K = window.COECripto, P = window.COEPush;
   const MARCA_PUSH = 'co-coe-push';   // última inscrição entregue ao MAPI (localStorage): não reenviar à toa
@@ -81,7 +83,26 @@
     } catch (e) { /* sem cache: nada a apagar */ }
   }
 
+  // ---------- modo MAPI ----------
+  // O app avisa `co-coe:pronto` (só o aviso, sem dado algum) e o MAPI responde `co-coe:dados` com o conteúdo já aberto, a quem tem o app
+  // liberado para a matrícula. Cada conferência automática repete o pedido. Só vale a mensagem da janela pai.
+  let esperaMapi = null;
+  function pedirAoMapi() {
+    clearTimeout(esperaMapi);
+    window.parent.postMessage({ tipo: 'co-coe:pronto', versao: APP_VERSION }, '*');
+    if (!dados) esperaMapi = setTimeout(() => { if (!dados) telaAviso('O MAPI não respondeu', 'Volte e abra o app de novo pelo HUB de Apps do MAPI.', false); }, 20000);
+  }
+  function receberDoMapi(e) {
+    if (e.source !== window.parent || !e.data || e.data.tipo !== 'co-coe:dados') return;
+    clearTimeout(esperaMapi);
+    const d = e.data.dados;
+    if (e.data.erro || !d || !d.coletado_em) { if (!dados) telaAviso('Não deu para abrir', e.data.erro ? String(e.data.erro) : 'O MAPI mandou dados em formato desconhecido.', false); return; }
+    dados = d; gerado = null; pushCtx = null; cred = null;
+    marcarOffline(false); desenhar();
+  }
+
   async function carregar() {
+    if (MODO_MAPI) return pedirAoMapi();
     cred = await K.lerCredHub();
     if (!cred) { dados = null; pushCtx = null; sino(); await apagarCopia(); return telaAviso('Entre pelo HUB',
       'Este app abre com o login do HUB dos apps. Entre no HUB com sua matrícula e chave e toque no atalho do Monitor COE.', true); }
@@ -406,6 +427,7 @@
   // ---------- início ----------
   function iniciar() {
     $('btHub').href = HUB_URL;
+    if (MODO_MAPI) { $('btHub').hidden = true; window.addEventListener('message', receberDoMapi); }
     $('btAtualizar').onclick = () => carregar();
     $('btSino').onclick = () => alternarSino();
     $('btCompartilhar').onclick = () => compartilhar();
@@ -419,7 +441,7 @@
     carregar();
     setInterval(() => { if (document.visibilityState === 'visible') carregar(); }, CONFERIR_MS);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') carregar(); });
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if (!MODO_MAPI && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
   window.COEApp = { APP_VERSION };
